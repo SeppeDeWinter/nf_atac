@@ -85,7 +85,7 @@ process call_peaks_filtered {
         val GENOME_SIZE from params.macs_effective_genome_size
         val EXTENSION_SIZE from params.macs_extension_size
     output:
-        path "filtered_${REP}_q${Q_VAL}.narrowPeak" into filteredBed_ch
+        path "filtered_${REP}_q${Q_VAL}_peaks.narrowPeak" into filteredBed_ch
     shell:
     '''
     macs2 callpeak -t !{BAMS} \
