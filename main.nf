@@ -83,7 +83,7 @@ process call_peaks_filtered {
         val GENOME_SIZE from params.macs_effective_genome_size
         val EXTENSION_SIZE from params.macs_extension_size
     output:
-        path "${OUT_DIR}/filtered_${bam.tokenize('.').get(0)}_peaks.narrowPeak" into filteredBed_ch
+        path "${OUT_DIR}/filtered_${bam.baseName.tokenize('.').get(0)}_peaks.narrowPeak" into filteredBed_ch
     shell:
     '''
     macs2 callpeak -t !{bam} -g !{GENOME_SIZE} --outdir !{OUT_DIR} -n filtered_!{bam.tokenize('.').get(0)} --nomodel
