@@ -86,7 +86,7 @@ process call_peaks_filtered {
         path "${OUT_DIR}/filtered_${bam.baseName.tokenize('.').get(0)}_peaks.narrowPeak" into filteredBed_ch
     shell:
     '''
-    macs2 callpeak -t !{bam} -g !{GENOME_SIZE} --outdir !{OUT_DIR} -n filtered_!{bam.tokenize('.').get(0)} --nomodel
+    macs2 callpeak -t !{bam} -g !{GENOME_SIZE} --outdir !{OUT_DIR} -n filtered_!{bam.baseName.tokenize('.').get(0)} --nomodel
     '''
 }
 
