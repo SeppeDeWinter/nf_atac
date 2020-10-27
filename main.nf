@@ -78,27 +78,15 @@ process filter {
 process call_peaks_filtered {
     label 'default'
     input:
-        tuple val(REP), file(BAMS) from filteredBam_ch3.map { p -> [p.baseName.tokenize('-').get(1).tokenize('_').get(0), p]}.groupTuple()
+        path bam from filteredBam_ch3
         path OUT_DIR from params.out_dir
-        val Q_VAL from params.macs_q
-        val SHIFT from params.macs_shift
         val GENOME_SIZE from params.macs_effective_genome_size
         val EXTENSION_SIZE from params.macs_extension_size
     output:
-        path "${OUT_DIR}/filtered_${REP}_q${Q_VAL}_peaks.narrowPeak" into filteredBed_ch
+        path "${OUT_DIR}/filtered_${bam.tokenize('.').get(0)}_peaks.narrowPeak" into filteredBed_ch
     shell:
     '''
-    macs2 callpeak -t !{BAMS} \
-    -q !{Q_VAL} \
-    -n filtered_!{REP}_q!{Q_VAL} \
-    --outdir !{OUT_DIR} \
-    -f BAMPE \
-    -g !{GENOME_SIZE} \
-    --nomodel \
-    --shift !{SHIFT} \
-    --extsize !{EXTENSION_SIZE} \
-    --keep-dup all \
-    --call-summits
+    macs2 callpeak -t !{bam} -g !{GENOME_SIZE} --outdir !{OUT_DIR} -n filtered_!{bam.tokenize('.').get(0)} --nomodel
     '''
 }
 
