@@ -1,9 +1,7 @@
 /**
 ==modules===
-samtools
 conda env nf_ATAC
-deepTools
-macs2
+Subread
 **/
 
 bams = Channel.fromPath(params.raw_bam_files_path)
@@ -64,13 +62,14 @@ process filter {
         val MAPQ_THRESH from params.mapQ_thr
         val MITO_NAME from params.mito_name
     output:
-        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName.tokenize('-').get(1)}.bam" into filteredBam_ch1
-        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName.tokenize('-').get(1)}.bam" into filteredBam_ch2
-        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName.tokenize('-').get(1)}.bam" into filteredBam_ch3
+        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName}.bam" into filteredBam_ch1
+        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName}.bam" into filteredBam_ch2
+        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName}.bam" into filteredBam_ch3
+        path "${OUT_DIR}/noMito_Q${MAPQ_THRESH}_FILTERED-${MARKDUP_RAW_BAM_FILE.baseName}.bam" into filteredBam_ch4
     shell:
     '''
     samtools index !{MARKDUP_RAW_BAM_FILE} 
-    samtools idxstats !{MARKDUP_RAW_BAM_FILE} | cut -f 1 | grep -v !{MITO_NAME} | xargs samtools view -q !{MAPQ_THRESH} -u !{MARKDUP_RAW_BAM_FILE} | samtools sort /dev/stdin -@ !{task.cpus} -o !{OUT_DIR}/noMito_Q!{MAPQ_THRESH}_FILTERED-!{MARKDUP_RAW_BAM_FILE.baseName.tokenize('-').get(1)}.bam
+    samtools idxstats !{MARKDUP_RAW_BAM_FILE} | cut -f 1 | grep -v !{MITO_NAME} | xargs samtools view -q !{MAPQ_THRESH} -u !{MARKDUP_RAW_BAM_FILE} | samtools sort /dev/stdin -@ !{task.cpus} -o !{OUT_DIR}/noMito_Q!{MAPQ_THRESH}_FILTERED-!{MARKDUP_RAW_BAM_FILE.baseName}.bam
     '''
 
 }
@@ -81,12 +80,102 @@ process call_peaks_filtered {
         path bam from filteredBam_ch3
         path OUT_DIR from params.out_dir
         val GENOME_SIZE from params.macs_effective_genome_size
-        val EXTENSION_SIZE from params.macs_extension_size
     output:
-        path "${OUT_DIR}/filtered_${bam.baseName.tokenize('.').get(0)}_peaks.narrowPeak" into filteredBed_ch
+        path "${OUT_DIR}/filtered_${bam.baseName.tokenize('.').get(0)}_peaks.narrowPeak" into bed_ch
     shell:
     '''
     macs2 callpeak -t !{bam} -g !{GENOME_SIZE} --outdir !{OUT_DIR} -n filtered_!{bam.baseName.tokenize('.').get(0)} --nomodel
     '''
 }
 
+process make_consensus_peak_set {
+    label 'default'
+    input:
+        path beds from bed_ch.collect()
+        path GENOME_INFO from params.genome_chr_sizes
+        path src from params.src_folder
+        path OUT_DIR from params.out_dir
+    output:
+        path "${OUT_DIR}/consensus.bed" into consensus_bed_ch
+    shell:
+    '''
+    Rscript !{src}/make_consensus_peaks.R \
+            -n !{beds} \
+            -g !{GENOME_INFO} \
+            -o !{OUT_DIR}/consensus.bed \
+            -p !{task.cpus}
+    '''
+}
+
+process count_reads_in_consensus_peaks {
+    label 'default'
+    input:
+        path consensus_bed from consensus_bed_ch
+        path src from params.src_folder
+        path bam from filteredBam_ch4
+    output:
+        tuple path(bam), path("${bam.baseName.tokenize('.').get(0)}_RIP.summary") into bam_rip_ch
+    shell:
+    '''
+    GFF_FILE=!{consensus_bed.baseName.tokenize('.').get(0)}.gff
+    !{src}/bedToGFF.py !{consensus_bed} ${GFF_FILE}
+    featureCounts !{bam} \
+                   -a ${GFF_FILE} \
+                   -T !{task.cpus} \
+                   -f -O \
+                   -g region \
+                   -t Region \
+                   -o !{bam.baseName.tokenize('.').get(0)}_RIP
+    '''
+}
+
+process make_FRIP_norm_BIGWIGS {
+    label 'default'
+    input:
+        tuple path(bam), path(count_summary) from bam_rip_ch
+        path OUT_DIR from params.out_dir
+        val GENOME_SIZE from params.macs_effective_genome_size
+        path BLACKLIST from params.blacklist_regions
+    output:
+        path "${OUT_DIR}/${bam.baseName.tokenize('.').get(0)}.bw" into bigwig_ch
+    shell:
+    '''
+    RIP=`cat !{count_summary} | awk 'NR==2' | cut -f 2`
+    SCALING_FACTOR=$(echo "scale=9; 1/($RIP/1000000)" | bc)
+    for bam in !{bam}
+    do
+        samtools index $bam
+    done
+    bamCoverage \
+        --bam !{bam} \
+        --scaleFactor ${SCALING_FACTOR} \
+        --normalizeUsing None \
+        --binSize 1 \
+        -p !{task.cpus} \
+        -bl !{BLACKLIST} \
+        --effectiveGenomeSize !{GENOME_SIZE} \
+        -o !{OUT_DIR}/!{bam.baseName.tokenize('.').get(0)}.bw
+    '''
+}
+
+process TSS_plot {
+    label 'default'
+    input:
+        path QC_DIR from params.qc_dir
+        path TSS_bed from params.TSS_bed
+        path bigwigs from bigwig_ch.collect()
+    shell:
+    '''
+    computeMatrix reference-point \
+                  -S !{bigwigs} \
+                  -R !{TSS_bed} \
+                  -o bw_TSS_matrix.gz \
+                  --referencePoint TSS \
+                  -b 3000 -a 3000 \
+                  -bs 5 \
+                  --smartLabels \
+                  -p !{task.cpus}
+    plotProfile -m bw_TSS_matrix.gz \
+                -o !{QC_DIR}/TSS_plot.pdf 
+    '''
+}
