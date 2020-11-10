@@ -135,7 +135,6 @@ process make_FRIP_norm_BIGWIGS {
         tuple path(bam), path(count_summary) from bam_rip_ch
         path OUT_DIR from params.out_dir
         val GENOME_SIZE from params.macs_effective_genome_size
-        path BLACKLIST from params.blacklist_regions
     output:
         path "${OUT_DIR}/${bam.baseName.tokenize('.').get(0)}.bw" into bigwig_ch
     shell:
@@ -152,7 +151,6 @@ process make_FRIP_norm_BIGWIGS {
         --normalizeUsing None \
         --binSize 1 \
         -p !{task.cpus} \
-        -bl !{BLACKLIST} \
         --effectiveGenomeSize !{GENOME_SIZE} \
         -o !{OUT_DIR}/!{bam.baseName.tokenize('.').get(0)}.bw
     '''
