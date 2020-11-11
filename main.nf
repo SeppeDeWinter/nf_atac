@@ -20,7 +20,7 @@ process fixmate_and_markdup {
     samtools fixmate -m collate_${RAW_BAM_FILE.baseName}.bam -@ ${task.cpus} - | samtools sort -O bam -@ ${task.cpus} - | samtools markdup -@ ${task.cpus} - MARKDUP-${RAW_BAM_FILE.baseName}.bam
     """
 } 
-
+/*
 process pre_filter_QC {
     label 'default'
     input:
@@ -53,7 +53,7 @@ process pre_filter_fingerplot {
     '''
     
 }
-
+*/
 process filter {
     label 'default'
     input:
