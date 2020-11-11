@@ -9,8 +9,7 @@ parser$add_argument('-o', '--out',help='path to write output')
 parser$add_argument('-p', '--ncores', help='number of cores to use', type = "integer")
 args <- parser$parse_args()
 print(args)
-genome_info = read.table(file = args$genomeInfo, col.names = c('seq_name', 'seq_len', 'mapped_reads', 'unmapped_reads'))
-genome_info = genome_info[-nrow(genome_info),]
+genome_info = read.table(file = args$genomeInfo, col.names = c('seq_name', 'seq_len'))
 genome_info = Seqinfo(seqnames = genome_info[['seq_name']], 
                         seqlengths = genome_info[['seq_len']], 
                         isCircular = rep(FALSE, times = nrow(genome_info)))
